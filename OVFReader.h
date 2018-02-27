@@ -4,6 +4,7 @@
 #include<vector>
 #include<array>
 #include<utility>
+#include<functional>
 
 
 //internal data type
@@ -35,7 +36,7 @@ private:
 	size_t count;
 	//dimension of vector field points
 	size_t dim;
-
+	
 	//convert index to coordinate
 	inline std::array<T, 3> deIndex(const size_t& x, const size_t& y, const size_t& z);
 public:
@@ -71,9 +72,9 @@ public:
 	CPair getPoint(const size_t& x, const size_t& y, const size_t& z);
 
 	//get a slice of array
-	std::vector<CPair> select(bool(*func)(const std::array<T, 3>&, const std::vector<T>&));
+	std::vector<CPair> select(std::function<bool(const std::array<T, 3>&, const std::vector<T>&)> func);
 	//select on a layer
-	std::vector<CPair> selectInLayer(bool(*func)(const std::array<T, 3>&, const std::vector<T>&), const size_t& zlayer);
+	std::vector<CPair> selectInLayer(std::function<bool(const std::array<T, 3>&, const std::vector<T>&)> func, const size_t& zlayer);
 };
 
 //vector field class implementations
@@ -342,7 +343,7 @@ VectorField<U> VectorField<T>::cast()
 
 
 template<typename T>
-std::vector<std::pair<std::array<T, 3>, std::vector<T>>> VectorField<T>::select(bool(*func)(const std::array<T, 3>&, const std::vector<T>&))
+std::vector<std::pair<std::array<T, 3>, std::vector<T>>> VectorField<T>::select(std::function<bool(const std::array<T, 3>&, const std::vector<T>&)> func)
 {
 	std::vector<CPair> collector{};
 	if (is_grid)
@@ -372,7 +373,7 @@ std::vector<std::pair<std::array<T, 3>, std::vector<T>>> VectorField<T>::select(
 }
 
 template<typename T>
-std::vector<std::pair<std::array<T, 3>, std::vector<T>>> VectorField<T>::selectInLayer(bool(*func)(const std::array<T, 3>&, const std::vector<T>&), const size_t& zlayer)
+std::vector<std::pair<std::array<T, 3>, std::vector<T>>> VectorField<T>::selectInLayer(std::function<bool(const std::array<T, 3>&, const std::vector<T>&)> func, const size_t& zlayer)
 {
 	if (!is_grid)
 		throw std::out_of_range("Cannot index irregular arrays");
