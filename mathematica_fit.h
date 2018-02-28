@@ -7,7 +7,7 @@
 #include<wstp.h>
 
 template<typename T>
-class MathematicaFitter : FitEngine<T>
+class MathematicaFitter : public FitEngine<T>
 {
 private:
 	//mathematica env variables

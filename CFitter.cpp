@@ -29,7 +29,7 @@
 
 struct Layer {
 	size_t n{ 0 };
-	std::array<double, 3> max{ 0., 0., 0. };
+	std::array<double, 2> max{ 0., 0. };
 	std::vector<
 		std::pair<
 				std::array<double, 3>, std::vector<double>
@@ -98,7 +98,7 @@ std::vector<std::vector<Layer>> getData(const std::string& fName, const std::vec
 
 			struct Layer ret;
 			ret.n = layer;
-			ret.max = convBase(ctr.first, ubase);
+			ret.max = convBase(std::array<double,2>{ ctr.first[0], ctr.first[1] }, ubase);
 			for (const auto& x : slice)
 				if (rad < 0 || pl_norm(x.first, ctr.first) <= rad * ubase)
 					ret.pnts.push_back({ convBase(x.first, ubase), x.second });
@@ -114,20 +114,20 @@ std::vector<std::vector<Layer>> getData(const std::string& fName, const std::vec
 
 //template for return result
 template<typename T>
-using ResList =  std::vector<
-		std::vector<std::pair<
-			std::string,
+using ResList =  std::vector<std::pair<
+		std::string,
+		std::vector<
 			std::map<size_t, T>		//vector of segments(size_t indexed maps of 
-			>>
->;
+		>
+>>;
 
 //fitter helper, hack arround strong typization
-template<typename T, typename U>
-T fitHelper(U& eng,const std::vector<std::pair<std::array<double, 3>, std::vector<double>>>& pts, const std::array<double, 2> &maxPos, bool cont, const T* const prev, double ubase)
+template<typename T>
+T fitHelper(FitEngine<double>& engine,const std::vector<std::pair<std::array<double, 3>, std::vector<double>>>& pts, const std::array<double, 2> &maxPos, bool cont, const T* const prev, double ubase)
 {
-	static_assert(std::is_base_of<FitEngine<double>, U>::value, "Engine should be derived from FitEngine class");
+	//static_assert(std::is_base_of<FitEngine<double>, U>::value, "Engine should be derived from FitEngine class");
 	bool useCont = cont&&prev!=nullptr;
-	FitEngine<double>& engine{eng};
+	//FitEngine<double>& engine{eng};
 	void* result{nullptr};
 	CGaussParams<double> resCVal;
 	if(std::is_same<T, CGaussParams<double>>::value){
@@ -164,6 +164,8 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 	struct Result{
 		//flag to set when the result is done
 		bool ready {false};
+		//flag to set if previous file is not found
+		bool orphaned{ false };
 		
 		//indexing stuff
 		size_t fileNumb	{ 0 };
@@ -180,7 +182,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 		//file index number
 		size_t fileNumb{ 0 };
 		//supposed maximum
-		std::array<double, 3> max{ 0., 0., 0. };
+		std::array<double, 2> max{ 0., 0. };
 		//data read from importer
 		std::vector<std::pair<std::array<double, 3>, std::vector<double>>> pts{};
 		//result drop off point
@@ -222,9 +224,11 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 
 	//checking if dependency exists
 	auto existDep = [&](const Ticket& t) {
-		if(t->fileNumb !=0 && !results[t->fileNumb - 1].first)
+		if (t.fileNumb == 0)
+			return true;
+		if(!results[t.fileNumb - 1].first)
 			return false;
-		return t->dropRes->required != nullptr && t->dropRes->required->ready;
+		return t.dropRes->orphaned || (t.dropRes->req != nullptr && t.dropRes->req->ready);
 	};
 	
 	//imported counter
@@ -326,7 +330,9 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 						
 						//push it into result map
 						lastSeg[layer.n] = r;
-						t.dropRes = &lastSeg[layer.n];
+						Result* thisLayer = &lastSeg[layer.n];
+						t.dropRes = thisLayer;
+						fileTickets.push(std::move(t));
 						
 						//if the whole deal is required to be continuous crosslink
 						if(cont)
@@ -334,16 +340,22 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 							//first try linking this file to previous(only if next file is read and 
 							//this file isn't first)
 							if(t.fileNumb != 0&&results[curFile.first - 1].first){
-								if(results[curFile.first - 1].second.size() <= sCnt)
+								if (results[curFile.first - 1].second.size() <= sCnt)
+								{
 									log->warn("Current segment {} of \"{}\", didn't exist in previous file", sCnt, curFile.second);
+									thisLayer->orphaned = true;
+								}
 								else{
-									const auto& prevFileMap = results[curFile.first - 1].second[sCnt];
+									auto& prevFileMap = results[curFile.first - 1].second[sCnt];
 									auto prev = prevFileMap.find(layer.n);
 									if(prev != prevFileMap.end())
-										lastSeg[layer.n].required = &prevFileMap[layer.n];
+										thisLayer->req = &prev->second;
 									else
+									{
 										log->warn("Current layer {} in segment {} of \"{}\", didn't exist in previous file",
-												  layer.n, sCnt, curFile.second);
+											layer.n, sCnt, curFile.second);
+										thisLayer->orphaned = true;
+									}
 								}
 							}
 							
@@ -354,8 +366,8 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 								else{
 									auto& nextFileMap = results[curFile.first + 1].second[sCnt];
 									auto next = nextFileMap.find(layer.n);
-									if(next != nextFileMap.end() && next->required == nullptr)
-										next->required = &lastSeg[layer.n];
+									if(next != nextFileMap.end() && next->second.req == nullptr)
+										next->second.req =thisLayer;
 									else
 										log->warn("Current layer {} in segment {} of \"{}\", doesn't exist in next file",
 												  layer.n, sCnt, curFile.second);
@@ -367,7 +379,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 					sCnt++;
 				}
 				impCount++;
-				if(impCount == files.size() - 1)
+				if(impCount == files.size())
 					moreTicketsExpected = false;
 				resultMutex.unlock();
 
@@ -388,6 +400,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 				//handling for getting ticket in case it is needed(either there was none or there is continuity condition)
 				//first wait for tickets to appear if there is none
 				if (waitForTicket) {
+					log->debug("Waiting for a file to fit to appear");
 					//unique lock should lock upon creation
 					std::unique_lock<std::mutex> ticketLock(ticketMutex);
 					//if before this point new tickets appeared, wait for tickets
@@ -395,6 +408,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 						ticketCV.wait(ticketLock);
 				}
 				//getting ticket
+				log->debug("Trying to aquire a ticket");
 				bool gotTicket{ !cont && !waitForTicket };
 				while (!gotTicket) {
 					ticketMutex.lock();
@@ -403,6 +417,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 					//break if there is no reason for waiting
 					if (!moreTicketsExpected&&tickets.empty())
 					{
+						log->debug("No more tickets expected, braking");
 						if (cont)
 							resultMutex.unlock();
 						ticketMutex.unlock();
@@ -444,8 +459,10 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 				//import code after this point
 				
 				//calling custom helper
-				curT.dropRes->fit_res = fitHelper<T, U>(fitEngine, curT.pts, curT.max, cont, curT.dropRes->required->fit_res, ubase);
+				curT.dropRes->fit_res = fitHelper<T>(fitEngine, curT.pts, curT.max, cont && curT.fileNumb != 0, &curT.dropRes->req->fit_res, ubase);
+				log->debug("fit succeeded");
 				curT.dropRes->ready = true;
+				resultCV.notify_all();
 			}
 			else
 			{
@@ -476,13 +493,26 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 			retFile.push_back({});
 			auto& cSeg = retFile.back();
 			for(auto& layer: seg)
-				cSeg[layer.first] = layer.second.fit_res;
+				if(layer.second.ready)
+					cSeg[layer.first] = layer.second.fit_res;
 		}
 	}
 
 	return retArray;
 }
 
+//templated printer
+template<typename T>
+void pout(const ResList<T>& res, std::ostream& str)
+{
+	for(const auto& file: res)
+		for(size_t sCnt = 0; sCnt < file.second.size(); sCnt++){
+			str<<'\t'<<"File: \""<<file.first<<"\", segment "<<sCnt<<"\n";
+			for(const auto& layer: file.second[sCnt]){
+				str<<layer.first<<'\t'<<layer.second<<'\n';
+			}
+		}
+}
 
 int main(int argc, char* argv[])
 {
@@ -506,7 +536,9 @@ int main(int argc, char* argv[])
 	double unit_base{ 1.e-9 };
 	//cut thresh
 	double thresh{ .1 };
-
+	//output file name
+	std::string ofile{ "" };
+	
 	//boost program options initialization
 	boost::program_options::options_description desc("Supported options");
 	desc.add_options()
@@ -518,13 +550,13 @@ int main(int argc, char* argv[])
 		//due to includes from wstp.h fucking up everything
 		//thanks MICROSOFT
 #if defined(_WIN32)||defined(WIN32)
-		("threads,t", boost::program_options::value<unsigned int>(&threadCnt)->default_value(min(4, std::thread::hardware_concurrency())))
+		("threads,t", boost::program_options::value<size_t>(&threadCnt)->default_value(min(4, std::thread::hardware_concurrency())))
 #else
 		//'u' in the literal is required because of how std::min is defined
 		("threads", boost::program_options::value<size_t>(&threadCnt)->default_value(std::min(4u, std::thread::hardware_concurrency())))
 #endif
-		("output,o", boost::program_options::value<std::string>()->default_value(""), "output text file name, by default table is spit into stdout")
-		("continuous,c", boost::program_options::bool_switch(&isCont)->default_value(false), "treat files as continuous series to improve fit speed")
+		("output,o", boost::program_options::value<std::string>(&ofile)->default_value(""), "output text file name, by default table is spit into stdout")
+		("continuous,c", boost::program_options::bool_switch(&isCont)->default_value(false), "treat files as continuous series to improve fit speed, fit results from previous file is used as initial conditions for next fit")
 		("verbose,v", boost::program_options::bool_switch(&isVerb)->default_value(false), "enable debug output")
 		("sec-cut-r", boost::program_options::value<double>(&cutR)->default_value(-1.0), "secondary cut radius")
 		("unit-base", boost::program_options::value<double>(&unit_base)->default_value(1.e-9), "unit base")
@@ -568,7 +600,8 @@ int main(int argc, char* argv[])
 		boost::program_options::notify(varMap);
 	}
 	catch (boost::program_options::error& e) {
-		conLog->error(e.what());
+		conLog->error("Wrong command-line usage!\n{}", e.what());
+		std::cout << desc << '\n';
 		return -1;
 	}
 
@@ -625,7 +658,7 @@ int main(int argc, char* argv[])
 	//TODO implement exploding wildcards for windows
 	//has to be done with win api, so it can SUCC
 	for(const auto& file: fileNames)
-		if (!boost::filesystem::exists(file) || !boost::filesystem::is_regular_file(file))
+		if (!boost::filesystem::is_regular_file(file))
 		{
 			conLog->error("File \"{}\" does not exist, aborting.", file);
 			return -1;
@@ -659,11 +692,38 @@ int main(int argc, char* argv[])
 	conLog->info("Starting fit using {} fitter threads of {} using {} vortex core model", threadCnt, bend == Backend::Ceres ? "Ceres" : "Mathematica", 
 		ffunc == FitFunction::CircularGauss ? "circular" : "elliptical");
 
+	std::ofstream fout;
+	//try to open the output file
+	if (ofile != "")
+	{
+		//open file for writing with modifier to discard old file content before starting a write
+		fout.open(ofile, std::fstream::out|std::fstream::trunc);
+		if (!fout.good())
+		{
+			conLog->error("Could not open the file \"{}\" for writing", ofile);
+			return -1;
+		}
+	}
 
-	//all the parallel stuff begins here
-	for (const auto& file : fileNames)
-		getData(file, layers, thresh, cutR, unit_base);
+	//output stream of the whole deal
+	std::ostream& outs{ (ofile != "") ? fout : std::cout };
+	if(ofile != "")outs << "//Backend: " << (bend == Backend::Ceres ? "Ceres" : "Mathematica") << "; Model: " << (ffunc == FitFunction::CircularGauss ? "circular gauss core" : "elliptical gauss core") << '\n';
 
-
+	if (ffunc == FitFunction::CircularGauss) {
+		pout<CGaussParams<double>>(
+			(bend == Backend::Mathematica)?
+			worker<CGaussParams<double>, MathematicaFitter<double>>(fileNames, layers, isCont, threadCnt, thresh, cutR, unit_base, isVerb):
+			worker<CGaussParams<double>, CeresFitEngine>(fileNames, layers, isCont, threadCnt, thresh, cutR, unit_base, isVerb),
+			outs
+			);
+	}
+	else {
+		pout<EGaussParams<double>>(
+			(bend == Backend::Mathematica) ?
+			worker<EGaussParams<double>, MathematicaFitter<double>>(fileNames, layers, isCont, threadCnt, thresh, cutR, unit_base, isVerb) :
+			worker<EGaussParams<double>, CeresFitEngine>(fileNames, layers, isCont, threadCnt, thresh, cutR, unit_base, isVerb),
+			outs
+			);
+	}
 	return 0;
 }

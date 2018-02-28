@@ -1,6 +1,8 @@
 #pragma once
 #include<vector>
 #include<array>
+#include<ostream>
+
 
 //container for circular gauss fit params
 template<typename T>
@@ -9,6 +11,13 @@ struct CGaussParams {
 	T r;
 };
 
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const CGaussParams<T>& par)
+{
+	os<<par.pos[0]<<'\t'<<par.pos[1]<<'\t'<<par.r;
+	return os;
+}
+
 //container for elyptical gauss fit params
 template<typename T>
 struct EGaussParams {
@@ -16,6 +25,13 @@ struct EGaussParams {
 	std::array<T, 2> prAxis;
 	T angle;
 };
+
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const EGaussParams<T>& par)
+{
+	os<<par.pos[0]<<'\t'<<par.pos[1]<<'\t'<<par.prAxis[0]<<'\t'<<par.prAxis[1]<<'\t'<<par.angle;
+	return os;
+}
 
 template<typename T>
 class FitEngine {
