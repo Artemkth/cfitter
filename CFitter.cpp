@@ -37,7 +37,6 @@ struct Layer {
 		> pnts{};
 };
 
-
 //in-plane deviation norm
 inline double pl_norm(const std::array<double, 3>& x, const std::array<double, 3>& y)
 {
@@ -129,7 +128,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 {
 	//check if the function is called for correct 
 	static_assert(std::is_same<T, CGaussParams<double>>::value || std::is_same<T, EGaussParams<double>>::value, "called a worker() for an unsupported fit function class");
-	static_assert(std::is_base_of<FitEngine<double>, U>, "provided wrong incompatible fitter backend");
+	static_assert(std::is_base_of<FitEngine<double>, U>::value, "provided wrong incompatible fitter backend");
 
 	//get the logger
 	auto conLog = spdlog::get("main");
@@ -226,7 +225,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 			if (isImporting)
 			{
 				curFile = std::move(importJobs.front());
-				inportJobs.pop();
+				importJobs.pop();
 			}
 
 			//don't forget to unlock everything
@@ -240,7 +239,7 @@ ResList<T> worker(const std::vector<std::string>& files, const std::vector<unsig
 				std::queue<Ticket> fileTickets{};
 
 				//data
-				auto rawData = getData(curFile, layers, thresh, rad, ubase);
+				auto rawData = getData(curFile, layers, thresh, radius, ubase);
 				for (size_t seg = 0; seg < rawData.size(); seg++)
 					for (auto& x : rawData[seg])
 					{
@@ -364,10 +363,12 @@ int main(int argc, char* argv[])
 		("backend,b", boost::program_options::value<std::string>()->default_value("ceres"), "Backend to use for fitting core-position. Available options are: ceres/mathematica")
 		("type", boost::program_options::value<std::string>()->default_value("elliptical", "Fit function type: elliptical/circular"))
 		//due to includes from wstp.h fucking up everything
+		//thanks MICROSOFT
 #if defined(_WIN32)||defined(WIN32)
 		("threads,t", boost::program_options::value<unsigned int>(&threadCnt)->default_value(min(4, std::thread::hardware_concurrency())))
-#elif
-		("threads", boost::program_options::value<unsigned int>(&threadCnt)->default_value(std::min(4, std::thread::hardware_concurrency())))
+#else
+		//'u' in the literal is required because of how std::min is defined
+		("threads", boost::program_options::value<unsigned int>(&threadCnt)->default_value(std::min(4u, std::thread::hardware_concurrency())))
 #endif
 		("output,o", boost::program_options::value<std::string>()->default_value(""), "output text file name, by default table is spit into stdout")
 		("continuous,c", boost::program_options::bool_switch(&isCont)->default_value(false), "treat files as continuous series to improve fit speed")
@@ -383,10 +384,15 @@ int main(int argc, char* argv[])
 
 	//parse commandline
 	boost::program_options::variables_map varMap;
-	boost::program_options::store(
-		boost::program_options::command_line_parser(argc, argv).options(desc).positional(posDesc).run(),
-		varMap
-	);
+	try {
+		boost::program_options::store(
+			boost::program_options::command_line_parser(argc, argv).options(desc).positional(posDesc).run(),
+			varMap
+		);
+	} catch(boost::program_options::error& e){
+		conLog->error(e.what());
+		return -1;
+	}
 
 	if (varMap.count("help"))
 	{
