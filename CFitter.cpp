@@ -1,5 +1,6 @@
 //standard libraries
 #include<iostream>
+#include<iomanip>
 #include<fstream>
 #include<thread>
 #include<vector>
@@ -708,6 +709,9 @@ int main(int argc, char* argv[])
 	//output stream of the whole deal
 	std::ostream& outs{ (ofile != "") ? fout : std::cout };
 	if(ofile != "")outs << "//Backend: " << (bend == Backend::Ceres ? "Ceres" : "Mathematica") << "; Model: " << (ffunc == FitFunction::CircularGauss ? "circular gauss core" : "elliptical gauss core") << '\n';
+		
+	//set precision
+	outs << std::setprecision(10);
 
 	if (ffunc == FitFunction::CircularGauss) {
 		pout<CGaussParams<double>>(
