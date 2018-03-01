@@ -554,7 +554,7 @@ int main(int argc, char* argv[])
 		("threads,t", boost::program_options::value<size_t>(&threadCnt)->default_value(min(4, std::thread::hardware_concurrency())))
 #else
 		//'u' in the literal is required because of how std::min is defined
-		("threads", boost::program_options::value<size_t>(&threadCnt)->default_value(std::min(4u, std::thread::hardware_concurrency())))
+		("threads,t", boost::program_options::value<size_t>(&threadCnt)->default_value(std::min(4u, std::thread::hardware_concurrency())))
 #endif
 		("output,o", boost::program_options::value<std::string>(&ofile)->default_value(""), "output text file name, by default table is spit into stdout")
 		("continuous,c", boost::program_options::bool_switch(&isCont)->default_value(false), "treat files as continuous series to improve fit speed, fit results from previous file is used as initial conditions for next fit")
