@@ -19,6 +19,7 @@
 
 //logging backend
 #include<spdlog/spdlog.h>
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 //program options reader
 #include<boost/program_options.hpp>
@@ -518,7 +519,7 @@ void pout(const ResList<T>& res, std::ostream& str)
 int main(int argc, char* argv[])
 {
 	//initialize main spdlog logger
-	auto conLog = spdlog::stdout_color_st("main");
+	auto conLog = spdlog::stdout_color_mt("main");
 	auto rLog = spdlog::stdout_color_mt("reader");
 
 	//thread count constant for future paralelism
