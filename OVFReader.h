@@ -5,6 +5,7 @@
 #include<array>
 #include<utility>
 #include<functional>
+#include<stdexcept>
 
 
 //internal data type

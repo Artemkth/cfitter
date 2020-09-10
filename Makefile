@@ -7,10 +7,10 @@ BUILD_DIR = ./build
 CXX_FLAGS = -O2
 
 test: ceres_fit.o OVFReader.o test.o
-	cd build;$(CXX) -luuid -lWSTP64i4 -lceres $^ -o test
+	cd build;$(CXX) $^ -lfmt -lWSTP64i4 -luuid -lrt -lceres -o test
 	
 cfitter: ceres_fit.o OVFReader.o CFitter.o
-	cd build;$(CXX) -luuid -lWSTP64i4 -lceres -lpthread $(BOOST_LIBS) $^ -o cfitter
+	cd build;$(CXX) $^ -lfmt -lWSTP64i4 -luuid -lrt -lceres -lpthread $(BOOST_LIBS) -o cfitter
 
 ceres_fit.o:
 	$(CXX) ceres_fit.cpp $(EIGEN_INCLUDES) $(CXX_FLAGS) -c -o $(BUILD_DIR)/ceres_fit.o
